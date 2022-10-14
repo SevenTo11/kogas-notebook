@@ -88,55 +88,32 @@ class Dataset_KOGAS_month(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
-
 class Dataset_Pred(Dataset):
-    def __init__(self, root_path, flag='pred', size=None, features='M', data_path='MergedKogas.csv', 
-                target='value', scale=True, inverse=False, timeenc=0, freq='m', cols=None):
-        # size [seq_len, label_len, pred_len]
-        # info
-        if size == None:
-            self.seq_len = 24*4*4
-            self.label_len = 24*4
-            self.pred_len = 24*4
-        else:
-            self.seq_len = size[0]
-            self.label_len = size[1]
-            self.pred_len = size[2]
-        # init
-        assert flag in ['pred']
+    def __init__(self, dataframe, size=None, scale=True):
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        self.dataframe = dataframe
         
-        self.features = features
-        self.target = target
         self.scale = scale
-        self.inverse = inverse
-        self.timeenc = timeenc
-        self.freq = freq
-        self.cols=cols
-        self.root_path = root_path
-        self.data_path = data_path
         self.__read_data__()
 
     def __read_data__(self):
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
-        '''
-        df_raw.columns: ['date', ...(other features), target feature]
-        '''
-        if self.cols:
-            cols=self.cols.copy()
-            cols.remove(self.target)
+        df_raw = self.dataframe
+        df_raw["date"] = pd.to_datetime(df_raw["date"])
+
+        delta = df_raw["date"].iloc[1] - df_raw["date"].iloc[0]
+        if delta>=timedelta(days=28):
+            self.freq='m'
         else:
-            cols = list(df_raw.columns); cols.remove(self.target); cols.remove('date')
-        df_raw = df_raw[['date']+cols+[self.target]]
-        
-        border1 = len(df_raw)-self.seq_len
+            self.freq='t'
+
+        border1 = 0
         border2 = len(df_raw)
-        
-        if self.features=='M' or self.features=='MS':
-            cols_data = df_raw.columns[1:]
-            df_data = df_raw[cols_data]
-        elif self.features=='S':
-            df_data = df_raw[[self.target]]
+        cols_data = df_raw.columns[1:]
+        df_data = df_raw[cols_data]
+
 
         if self.scale:
             self.scaler.fit(df_data.values)
@@ -147,16 +124,16 @@ class Dataset_Pred(Dataset):
         tmp_stamp = df_raw[['date']][border1:border2]
         tmp_stamp['date'] = pd.to_datetime(tmp_stamp.date)
         pred_dates = pd.date_range(tmp_stamp.date.values[-1], periods=self.pred_len+1, freq=self.freq)
+        # 예측 기간 생성 : train 의 마지막 time stamp ~ 예측 기간 +1 까지, month 단위로
         
         df_stamp = pd.DataFrame(columns = ['date'])
         df_stamp.date = list(tmp_stamp.date.values) + list(pred_dates[1:])
-        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq[-1:])
+        # 과거 train 시작날짜 부터 예측 날짜 마지막까지
+        data_stamp = time_features(df_stamp, freq=self.freq)
+        # t냐 m 에 따라 뽑아 내는 거
 
         self.data_x = data[border1:border2]
-        if self.inverse:
-            self.data_y = df_data.values[border1:border2]
-        else:
-            self.data_y = data[border1:border2]
+        self.data_y = data[border1:border2]
         self.data_stamp = data_stamp
     
     def __getitem__(self, index):
@@ -166,17 +143,10 @@ class Dataset_Pred(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
 
         seq_x = self.data_x[s_begin:s_end]
-        if self.inverse:
-            seq_y = self.data_x[r_begin:r_begin+self.label_len]
-        else:
-            seq_y = self.data_y[r_begin:r_begin+self.label_len]
+        seq_y = self.data_y[r_begin:r_end]
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
-
         return seq_x, seq_y, seq_x_mark, seq_y_mark
-    
-    def __len__(self):
-        return len(self.data_x) - self.seq_len + 1
 
-    def inverse_transform(self, data):
-        return self.scaler.inverse_transform(data)
+    def __len__(self):
+        return len(self.data_x) - self.seq_len- self.pred_len + 1

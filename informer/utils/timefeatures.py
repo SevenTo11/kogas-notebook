@@ -111,7 +111,7 @@ def time_features_from_frequency_str(freq_str: str) -> List[TimeFeature]:
     """
     raise RuntimeError(supported_freq_msg)
 
-def time_features(dates, timeenc=1, freq='m'):
+def time_features(dates, timeenc=0, freq='m'):
     """
     > `time_features` takes in a `dates` dataframe with a 'dates' column and extracts the date down to `freq` where freq can be any of the following if `timeenc` is 0: 
     > * m - [month]
@@ -134,6 +134,7 @@ def time_features(dates, timeenc=1, freq='m'):
     *minute returns a number from 0-3 corresponding to the 15 minute period it falls into.
     """
     if timeenc==0:
+        dates['year'] = dates.date.apply(lambda row:row.year,1)
         dates['month'] = dates.date.apply(lambda row:row.month,1)
         dates['day'] = dates.date.apply(lambda row:row.day,1)
         dates['weekday'] = dates.date.apply(lambda row:row.weekday(),1)
