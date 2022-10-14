@@ -104,10 +104,8 @@ class Dataset_Pred(Dataset):
         df_raw["date"] = pd.to_datetime(df_raw["date"])
 
         delta = df_raw["date"].iloc[1] - df_raw["date"].iloc[0]
-        if delta>=timedelta(days=28):
-            self.freq='m'
-        else:
-            self.freq='t'
+
+        self.freq='m'
 
         border1 = 0
         border2 = len(df_raw)
